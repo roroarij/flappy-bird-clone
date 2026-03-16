@@ -213,10 +213,12 @@ function getTripState() {
   const time = performance.now() / 1000;
   const pulse = gameState.tripPulse;
   const intensity = Math.min(MAX_TRIP_INTENSITY, gameState.tripIntensity + pulse * 0.4);
+  const mutation = Math.min(1, gameState.score / 10);
   return {
     time,
     pulse,
     intensity,
+    mutation,
     hueShift: (gameState.score * 34 + time * 120) % 360,
     wobble: intensity * 10 + pulse * 14,
     tunnel: intensity * 24 + pulse * 36,
@@ -383,48 +385,105 @@ function drawGround(target, trip) {
 
 function drawBird(target, trip) {
   const { x, y, radius, rotation } = gameState.bird;
+  const morph = trip.mutation;
+  const bodyStretchX = 1 + Math.sin(trip.time * 5.5) * morph * 0.34 + trip.pulse * 0.18;
+  const bodyStretchY = 1 + Math.cos(trip.time * 4.6) * morph * 0.24 - trip.pulse * 0.06;
+  const eyeOffsetX = 6 + Math.sin(trip.time * 7.2) * morph * 10;
+  const eyeOffsetY = -7 + Math.cos(trip.time * 6.4) * morph * 7;
+  const beakLength = 16 + morph * 18 + Math.sin(trip.time * 8.5) * 6;
+  const cheekRadiusX = 10 + morph * 8;
+  const cheekRadiusY = 6 + morph * 5;
 
   target.save();
   target.translate(x, y);
-  target.rotate(rotation + Math.sin(trip.time * 8) * trip.intensity * 0.18);
-  target.scale(1 + trip.pulse * 0.18, 1 - trip.pulse * 0.08);
+  target.rotate(rotation + Math.sin(trip.time * 8) * trip.intensity * 0.18 + Math.sin(trip.time * 4.2) * morph * 0.16);
+  target.scale(bodyStretchX, bodyStretchY);
 
   target.shadowColor = `hsla(${(trip.hueShift + 300) % 360} 100% 68% / 0.8)`;
-  target.shadowBlur = 12 + trip.intensity * 26;
+  target.shadowBlur = 12 + trip.intensity * 26 + morph * 18;
+
+  if (morph > 0.08) {
+    drawBirdEchoes(target, trip, radius, morph);
+  }
 
   target.fillStyle = `hsl(${(trip.hueShift + 30) % 360} 100% 60%)`;
   target.beginPath();
-  target.ellipse(0, 0, radius + 6, radius, 0, 0, Math.PI * 2);
+  target.ellipse(0, 0, radius + 6 + morph * 8, radius + morph * 3, Math.sin(trip.time * 3.8) * morph * 0.4, 0, Math.PI * 2);
   target.fill();
 
   target.fillStyle = `hsl(${(trip.hueShift + 80) % 360} 100% 84%)`;
   target.beginPath();
-  target.ellipse(-4, 5, radius * 0.55, radius * 0.45, -0.2, 0, Math.PI * 2);
+  target.ellipse(-4 - morph * 3, 5 + morph * 2, radius * (0.55 + morph * 0.12), radius * (0.45 + morph * 0.1), -0.2 + Math.sin(trip.time * 4.8) * morph * 0.35, 0, Math.PI * 2);
   target.fill();
 
   target.fillStyle = `hsl(${(trip.hueShift + 180) % 360} 100% 58%)`;
   target.beginPath();
-  target.moveTo(radius - 2, 2);
-  target.lineTo(radius + 16, -2);
-  target.lineTo(radius - 2, -8);
+  target.moveTo(radius - 2 + morph * 2, 2 + morph * 4);
+  target.lineTo(radius + beakLength, -2 - morph * 5);
+  target.lineTo(radius - 2 + morph * 2, -8 - morph * 6);
   target.closePath();
   target.fill();
 
   target.fillStyle = "#ffffff";
   target.beginPath();
-  target.arc(6, -7, 7, 0, Math.PI * 2);
+  target.arc(eyeOffsetX, eyeOffsetY, 7 + morph * 3, 0, Math.PI * 2);
   target.fill();
 
   target.fillStyle = `hsl(${(trip.hueShift + 260) % 360} 100% 20%)`;
   target.beginPath();
-  target.arc(8, -7, 3, 0, Math.PI * 2);
+  target.arc(
+    eyeOffsetX + 2 + Math.sin(trip.time * 9.4) * morph * 3,
+    eyeOffsetY + Math.cos(trip.time * 8.6) * morph * 2,
+    3 + morph * 1.5,
+    0,
+    Math.PI * 2
+  );
   target.fill();
 
   target.fillStyle = `hsl(${(trip.hueShift + 330) % 360} 90% 52%)`;
   target.beginPath();
-  target.ellipse(-2, 2, 10, 6, -0.4, 0, Math.PI * 2);
+  target.ellipse(-2 - morph * 3, 2 + morph * 2, cheekRadiusX, cheekRadiusY, -0.4 + Math.sin(trip.time * 5.2) * morph * 0.6, 0, Math.PI * 2);
   target.fill();
 
+  if (morph > 0.22) {
+    drawBirdCrest(target, trip, radius, morph);
+  }
+
+  target.restore();
+}
+
+function drawBirdEchoes(target, trip, radius, morph) {
+  const echoCount = 2 + Math.floor(morph * 4);
+  target.save();
+  target.globalCompositeOperation = "screen";
+  for (let index = 0; index < echoCount; index += 1) {
+    const direction = index % 2 === 0 ? -1 : 1;
+    const offsetX = direction * (8 + index * 6 + morph * 12);
+    const offsetY = Math.sin(trip.time * 6 + index) * (4 + morph * 10);
+    target.fillStyle = `hsla(${(trip.hueShift + index * 48) % 360} 100% 70% / ${0.12 + morph * 0.08})`;
+    target.beginPath();
+    target.ellipse(offsetX, offsetY, radius + 5 + morph * 6, radius * 0.78, trip.time * 0.8 + index, 0, Math.PI * 2);
+    target.fill();
+  }
+  target.restore();
+}
+
+function drawBirdCrest(target, trip, radius, morph) {
+  const crestCount = 3 + Math.floor(morph * 3);
+  target.save();
+  target.globalCompositeOperation = "screen";
+  for (let index = 0; index < crestCount; index += 1) {
+    const angle = -1.8 + index * (0.45 + morph * 0.08) + Math.sin(trip.time * 5.4 + index) * 0.08;
+    const length = radius + 10 + morph * 20 + index * 4;
+    const tipX = Math.cos(angle) * length;
+    const tipY = Math.sin(angle) * length - 10;
+    target.strokeStyle = `hsla(${(trip.hueShift + 210 + index * 34) % 360} 100% 72% / ${0.4 + morph * 0.2})`;
+    target.lineWidth = 2 + morph * 3;
+    target.beginPath();
+    target.moveTo(-4, -8);
+    target.quadraticCurveTo(tipX * 0.45, tipY * 0.45, tipX, tipY);
+    target.stroke();
+  }
   target.restore();
 }
 
