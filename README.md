@@ -1,6 +1,6 @@
-# Flappy Bird Clone
+# Trippy Bird
 
-A lightweight Flappy Bird clone built with plain HTML, CSS, and canvas.
+A psychedelic Flappy Bird-inspired game built with plain HTML, CSS, and canvas.
 
 ## Run locally
 

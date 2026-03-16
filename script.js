@@ -279,6 +279,9 @@ function drawSky(target, trip) {
   target.fillStyle = skyGradient;
   target.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
+  drawSkyBurst(target, trip);
+  drawWarpGrid(target, trip);
+
   target.fillStyle = `hsla(${(trip.hueShift + 40) % 360} 100% 78% / 0.95)`;
   target.beginPath();
   target.arc(
@@ -289,6 +292,73 @@ function drawSky(target, trip) {
     Math.PI * 2
   );
   target.fill();
+}
+
+function drawSkyBurst(target, trip) {
+  target.save();
+  target.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
+  target.globalCompositeOperation = "screen";
+
+  const rayCount = 16 + Math.floor(trip.intensity * 18);
+  for (let index = 0; index < rayCount; index += 1) {
+    target.save();
+    target.rotate((Math.PI * 2 * index) / rayCount + trip.time * 0.09);
+    target.fillStyle = `hsla(${(trip.hueShift + index * 18) % 360} 100% 74% / ${0.04 + trip.intensity * 0.08})`;
+    target.beginPath();
+    target.moveTo(-8, -10);
+    target.lineTo(8, -10);
+    target.lineTo(40 + trip.tunnel * 1.6, -240 - trip.tunnel * 2.4);
+    target.lineTo(-40 - trip.tunnel * 1.6, -240 - trip.tunnel * 2.4);
+    target.closePath();
+    target.fill();
+    target.restore();
+  }
+
+  target.restore();
+}
+
+function drawWarpGrid(target, trip) {
+  if (trip.intensity < 0.08) {
+    return;
+  }
+
+  target.save();
+  target.strokeStyle = `hsla(${(trip.hueShift + 180) % 360} 100% 88% / ${0.06 + trip.intensity * 0.08})`;
+  target.lineWidth = 1;
+
+  for (let x = -40; x <= GAME_WIDTH + 40; x += 26) {
+    target.beginPath();
+    for (let y = 0; y <= GAME_HEIGHT; y += 18) {
+      const warpX =
+        x +
+        Math.sin(trip.time * 1.8 + y / 70) * trip.wobble * 0.9 +
+        Math.cos(trip.time * 2.2 + x / 40) * trip.intensity * 5;
+      if (y === 0) {
+        target.moveTo(warpX, y);
+      } else {
+        target.lineTo(warpX, y);
+      }
+    }
+    target.stroke();
+  }
+
+  for (let y = -10; y <= GAME_HEIGHT; y += 28) {
+    target.beginPath();
+    for (let x = 0; x <= GAME_WIDTH; x += 18) {
+      const warpY =
+        y +
+        Math.cos(trip.time * 1.7 + x / 65) * trip.wobble * 0.55 +
+        Math.sin(trip.time * 2.4 + y / 42) * trip.intensity * 6;
+      if (x === 0) {
+        target.moveTo(x, warpY);
+      } else {
+        target.lineTo(x, warpY);
+      }
+    }
+    target.stroke();
+  }
+
+  target.restore();
 }
 
 function drawClouds(target, trip) {
