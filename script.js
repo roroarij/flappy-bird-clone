@@ -6,6 +6,7 @@ const overlayNode = document.getElementById("overlay");
 const startButton = document.getElementById("start-button");
 const sceneCanvas = document.createElement("canvas");
 const sceneCtx = sceneCanvas.getContext("2d");
+const birdImage = new Image();
 
 const GAME_WIDTH = canvas.width;
 const GAME_HEIGHT = canvas.height;
@@ -25,6 +26,7 @@ const MAX_TRIP_INTENSITY = 1;
 
 sceneCanvas.width = GAME_WIDTH;
 sceneCanvas.height = GAME_HEIGHT;
+birdImage.src = "./assets/trippy-bird.png";
 
 const gameState = {
   phase: "ready",
@@ -483,25 +485,50 @@ function drawBird(target, trip) {
     drawBirdAura(target, trip, radius, morph, stage);
   }
 
+  drawBirdImage(target, trip, radius, morph);
+
+  drawBirdFaceMutation(target, trip, morph, eyeOffsetX, eyeOffsetY, cheekRadiusX, cheekRadiusY, beakLength);
+
+  if (stage >= 3) {
+    drawBirdTendrils(target, trip, radius, morph);
+  }
+
+  if (stage >= 4) {
+    drawBirdHalo(target, trip, radius, morph);
+  }
+
+  if (morph > 0.22) {
+    drawBirdCrest(target, trip, radius, morph);
+  }
+
+  target.restore();
+}
+
+function drawBirdImage(target, trip, radius, morph) {
+  const width = 74 + radius * 1.9 + morph * 22;
+  const height = width * (363 / 239);
+  const driftX = Math.sin(trip.time * 5.1) * morph * 4;
+  const driftY = Math.cos(trip.time * 4.3) * morph * 6;
+
+  if (birdImage.complete && birdImage.naturalWidth > 0) {
+    target.drawImage(
+      birdImage,
+      -width / 2 + driftX,
+      -height / 2 + driftY,
+      width,
+      height
+    );
+    return;
+  }
+
   target.fillStyle = `hsl(${(trip.hueShift + 30) % 360} 100% 60%)`;
   target.beginPath();
   target.ellipse(0, 0, radius + 6 + morph * 8, radius + morph * 3, Math.sin(trip.time * 3.8) * morph * 0.4, 0, Math.PI * 2);
   target.fill();
+}
 
-  target.fillStyle = `hsl(${(trip.hueShift + 80) % 360} 100% 84%)`;
-  target.beginPath();
-  target.ellipse(-4 - morph * 3, 5 + morph * 2, radius * (0.55 + morph * 0.12), radius * (0.45 + morph * 0.1), -0.2 + Math.sin(trip.time * 4.8) * morph * 0.35, 0, Math.PI * 2);
-  target.fill();
-
-  target.fillStyle = `hsl(${(trip.hueShift + 180) % 360} 100% 58%)`;
-  target.beginPath();
-  target.moveTo(radius - 2 + morph * 2, 2 + morph * 4);
-  target.lineTo(radius + beakLength, -2 - morph * 5);
-  target.lineTo(radius - 2 + morph * 2, -8 - morph * 6);
-  target.closePath();
-  target.fill();
-
-  target.fillStyle = "#ffffff";
+function drawBirdFaceMutation(target, trip, morph, eyeOffsetX, eyeOffsetY, cheekRadiusX, cheekRadiusY, beakLength) {
+  target.fillStyle = "rgba(255,255,255,0.9)";
   target.beginPath();
   target.arc(eyeOffsetX, eyeOffsetY, 7 + morph * 3, 0, Math.PI * 2);
   target.fill();
@@ -517,28 +544,22 @@ function drawBird(target, trip) {
   );
   target.fill();
 
-  if (stage >= 1) {
+  if (trip.mutationStage >= 1) {
     drawBirdSecondaryEye(target, trip, morph, eyeOffsetX, eyeOffsetY);
   }
 
-  target.fillStyle = `hsl(${(trip.hueShift + 330) % 360} 90% 52%)`;
+  target.fillStyle = `hsla(${(trip.hueShift + 180) % 360} 100% 58% / ${0.18 + morph * 0.14})`;
   target.beginPath();
-  target.ellipse(-2 - morph * 3, 2 + morph * 2, cheekRadiusX, cheekRadiusY, -0.4 + Math.sin(trip.time * 5.2) * morph * 0.6, 0, Math.PI * 2);
+  target.moveTo(20 + morph * 6, -2);
+  target.lineTo(20 + beakLength, -8 - morph * 8);
+  target.lineTo(22 + morph * 6, 8 + morph * 10);
+  target.closePath();
   target.fill();
 
-  if (stage >= 3) {
-    drawBirdTendrils(target, trip, radius, morph);
-  }
-
-  if (stage >= 4) {
-    drawBirdHalo(target, trip, radius, morph);
-  }
-
-  if (morph > 0.22) {
-    drawBirdCrest(target, trip, radius, morph);
-  }
-
-  target.restore();
+  target.fillStyle = `hsla(${(trip.hueShift + 330) % 360} 90% 52% / ${0.24 + morph * 0.14})`;
+  target.beginPath();
+  target.ellipse(-2 - morph * 3, 12 + morph * 4, cheekRadiusX, cheekRadiusY, -0.4 + Math.sin(trip.time * 5.2) * morph * 0.6, 0, Math.PI * 2);
+  target.fill();
 }
 
 function drawBirdEchoes(target, trip, radius, morph) {
