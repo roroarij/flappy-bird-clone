@@ -19,6 +19,7 @@ const MAX_FALL_SPEED = 10;
 const CLOUD_SPEED = 0.24;
 const BIRD_X = 112;
 const STORAGE_KEY = "flappy-best-score";
+const MAX_TRIP_INTENSITY = 1;
 
 const gameState = {
   phase: "ready",
@@ -33,6 +34,8 @@ const gameState = {
   clouds: [],
   score: 0,
   bestScore: Number(localStorage.getItem(STORAGE_KEY) || 0),
+  tripIntensity: 0,
+  tripPulse: 0,
   lastPipeAt: 0,
   lastFrameAt: 0
 };
@@ -47,6 +50,8 @@ function resetGame() {
   gameState.pipes = [];
   gameState.clouds = buildClouds();
   gameState.score = 0;
+  gameState.tripIntensity = 0;
+  gameState.tripPulse = 0;
   gameState.lastPipeAt = 0;
   scoreNode.textContent = "0";
   overlayNode.classList.remove("hidden");
@@ -107,6 +112,7 @@ function spawnPipe() {
 
 function update(delta) {
   updateClouds(delta);
+  updateTrip(delta);
 
   if (gameState.phase !== "running") {
     floatBird(delta);
@@ -132,6 +138,7 @@ function update(delta) {
     if (!pipe.scored && pipe.x + PIPE_WIDTH < gameState.bird.x) {
       pipe.scored = true;
       gameState.score += 1;
+      triggerTrip();
       scoreNode.textContent = String(gameState.score);
     }
   }
@@ -141,6 +148,17 @@ function update(delta) {
   if (isCollision()) {
     endGame();
   }
+}
+
+function updateTrip(delta) {
+  const frameScale = delta / 16.67;
+  gameState.tripPulse = Math.max(0, gameState.tripPulse - 0.022 * frameScale);
+}
+
+function triggerTrip() {
+  const scoreScale = Math.min(MAX_TRIP_INTENSITY, gameState.score / 12);
+  gameState.tripIntensity = scoreScale;
+  gameState.tripPulse = 1;
 }
 
 function updateClouds(delta) {
@@ -181,41 +199,84 @@ function isCollision() {
 }
 
 function draw() {
-  drawSky();
-  drawClouds();
-  drawPipes();
-  drawGround();
-  drawBird();
+  const trip = getTripState();
+
+  ctx.save();
+  applyTripTransform(trip);
+  drawSky(trip);
+  drawClouds(trip);
+  drawPipes(trip);
+  drawGround(trip);
+  drawBird(trip);
+  drawHallucinations(trip);
+  ctx.restore();
 }
 
-function drawSky() {
+function getTripState() {
+  const time = performance.now() / 1000;
+  const pulse = gameState.tripPulse;
+  const intensity = Math.min(MAX_TRIP_INTENSITY, gameState.tripIntensity + pulse * 0.4);
+  return {
+    time,
+    pulse,
+    intensity,
+    hueShift: (gameState.score * 34 + time * 120) % 360,
+    wobble: intensity * 14 + pulse * 20
+  };
+}
+
+function applyTripTransform(trip) {
+  const waveX = Math.sin(trip.time * 2.1) * trip.wobble;
+  const waveY = Math.cos(trip.time * 1.4) * (trip.intensity * 9 + trip.pulse * 12);
+  ctx.translate(GAME_WIDTH / 2 + waveX, GAME_HEIGHT / 2 + waveY);
+  ctx.rotate(Math.sin(trip.time * 1.2) * trip.intensity * 0.08);
+  ctx.scale(1 + trip.intensity * 0.06, 1 + trip.intensity * 0.04);
+  ctx.translate(-GAME_WIDTH / 2, -GAME_HEIGHT / 2);
+  ctx.filter = `hue-rotate(${trip.hueShift}deg) saturate(${1.1 + trip.intensity * 2.4}) contrast(${1.02 + trip.intensity * 0.28}) brightness(${1 + trip.pulse * 0.22})`;
+}
+
+function drawSky(trip) {
   const skyGradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-  skyGradient.addColorStop(0, "#8fe2ff");
-  skyGradient.addColorStop(0.6, "#bbf5ff");
-  skyGradient.addColorStop(1, "#e3f8cb");
+  skyGradient.addColorStop(0, `hsl(${(trip.hueShift + 210) % 360} 95% 72%)`);
+  skyGradient.addColorStop(0.55, `hsl(${(trip.hueShift + 320) % 360} 100% 78%)`);
+  skyGradient.addColorStop(1, `hsl(${(trip.hueShift + 90) % 360} 96% 72%)`);
   ctx.fillStyle = skyGradient;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  ctx.fillStyle = "rgba(255, 244, 191, 0.95)";
+  ctx.fillStyle = `hsla(${(trip.hueShift + 40) % 360} 100% 78% / 0.95)`;
   ctx.beginPath();
-  ctx.arc(GAME_WIDTH - 72, 84, 30, 0, Math.PI * 2);
+  ctx.arc(
+    GAME_WIDTH - 72 + Math.sin(trip.time * 2.6) * trip.wobble,
+    84 + Math.cos(trip.time * 2.2) * trip.wobble,
+    30 + trip.intensity * 10,
+    0,
+    Math.PI * 2
+  );
   ctx.fill();
 }
 
-function drawClouds() {
-  ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
+function drawClouds(trip) {
   for (const cloud of gameState.clouds) {
-    roundedRect(cloud.x, cloud.y, cloud.width, cloud.height, cloud.height / 2);
+    ctx.fillStyle = `hsla(${(trip.hueShift + cloud.x) % 360} 100% 88% / 0.78)`;
+    const driftY = Math.sin(trip.time * 3 + cloud.x / 50) * trip.wobble * 0.45;
+    const widthWarp = 1 + Math.sin(trip.time * 2.5 + cloud.y / 40) * trip.intensity * 0.22;
+    roundedRect(
+      cloud.x,
+      cloud.y + driftY,
+      cloud.width * widthWarp,
+      cloud.height,
+      cloud.height / 2
+    );
     roundedRect(
       cloud.x + cloud.width * 0.2,
-      cloud.y - cloud.height * 0.45,
+      cloud.y - cloud.height * 0.45 + driftY,
       cloud.width * 0.45,
       cloud.height * 0.9,
       cloud.height / 2
     );
     roundedRect(
       cloud.x + cloud.width * 0.5,
-      cloud.y - cloud.height * 0.25,
+      cloud.y - cloud.height * 0.25 + driftY,
       cloud.width * 0.36,
       cloud.height * 0.7,
       cloud.height / 2
@@ -223,19 +284,22 @@ function drawClouds() {
   }
 }
 
-function drawPipes() {
+function drawPipes(trip) {
   for (const pipe of gameState.pipes) {
-    drawPipe(pipe.x, 0, pipe.gapTop, true);
+    const warp = Math.sin(trip.time * 4 + pipe.x / 60) * trip.wobble;
+    drawPipe(pipe.x + warp, 0, pipe.gapTop, true, trip, pipe.x);
     drawPipe(
-      pipe.x,
+      pipe.x - warp,
       pipe.gapTop + PIPE_GAP,
       GAME_HEIGHT - GROUND_HEIGHT - (pipe.gapTop + PIPE_GAP),
-      false
+      false,
+      trip,
+      pipe.x
     );
   }
 }
 
-function drawPipe(x, y, height, upsideDown) {
+function drawPipe(x, y, height, upsideDown, trip, seed) {
   ctx.save();
   if (upsideDown) {
     ctx.translate(0, y + height);
@@ -244,60 +308,65 @@ function drawPipe(x, y, height, upsideDown) {
   }
 
   const pipeGradient = ctx.createLinearGradient(x, 0, x + PIPE_WIDTH, 0);
-  pipeGradient.addColorStop(0, "#2f9f43");
-  pipeGradient.addColorStop(0.5, "#78d64b");
-  pipeGradient.addColorStop(1, "#2f9f43");
+  pipeGradient.addColorStop(0, `hsl(${(trip.hueShift + seed / 2) % 360} 80% 38%)`);
+  pipeGradient.addColorStop(0.5, `hsl(${(trip.hueShift + 100 + seed / 3) % 360} 95% 62%)`);
+  pipeGradient.addColorStop(1, `hsl(${(trip.hueShift + 220 + seed / 2) % 360} 80% 38%)`);
 
   ctx.fillStyle = pipeGradient;
   ctx.fillRect(x, y, PIPE_WIDTH, height);
 
-  ctx.fillStyle = "#1b6a2d";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 160) % 360} 88% 22%)`;
   ctx.fillRect(x, y, 8, height);
   ctx.fillRect(x + PIPE_WIDTH - 8, y, 8, height);
 
-  ctx.fillStyle = "#8ae35c";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 70) % 360} 100% 64%)`;
   ctx.fillRect(x - 6, y + 24, PIPE_WIDTH + 12, 24);
-  ctx.fillStyle = "#2f9f43";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 300) % 360} 85% 42%)`;
   ctx.fillRect(x - 6, y + 40, PIPE_WIDTH + 12, 8);
 
   ctx.restore();
 }
 
-function drawGround() {
-  ctx.fillStyle = "#c88f42";
+function drawGround(trip) {
+  ctx.fillStyle = `hsl(${(trip.hueShift + 20) % 360} 85% 58%)`;
   ctx.fillRect(0, GAME_HEIGHT - GROUND_HEIGHT, GAME_WIDTH, GROUND_HEIGHT);
 
-  ctx.fillStyle = "#68bf52";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 140) % 360} 95% 58%)`;
   ctx.fillRect(0, GAME_HEIGHT - GROUND_HEIGHT, GAME_WIDTH, 18);
 
-  ctx.strokeStyle = "rgba(93, 63, 38, 0.35)";
+  ctx.strokeStyle = `hsla(${(trip.hueShift + 260) % 360} 90% 30% / 0.45)`;
   ctx.lineWidth = 4;
   for (let x = 0; x < GAME_WIDTH + 24; x += 26) {
     ctx.beginPath();
-    ctx.moveTo(x, GAME_HEIGHT - 34);
-    ctx.lineTo(x + 18, GAME_HEIGHT - 20);
+    const groove = Math.sin(trip.time * 6 + x / 18) * trip.wobble * 0.35;
+    ctx.moveTo(x, GAME_HEIGHT - 34 + groove);
+    ctx.lineTo(x + 18, GAME_HEIGHT - 20 - groove);
     ctx.stroke();
   }
 }
 
-function drawBird() {
+function drawBird(trip) {
   const { x, y, radius, rotation } = gameState.bird;
 
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(rotation);
+  ctx.rotate(rotation + Math.sin(trip.time * 8) * trip.intensity * 0.18);
+  ctx.scale(1 + trip.pulse * 0.18, 1 - trip.pulse * 0.08);
 
-  ctx.fillStyle = "#f4b942";
+  ctx.shadowColor = `hsla(${(trip.hueShift + 300) % 360} 100% 68% / 0.8)`;
+  ctx.shadowBlur = 12 + trip.intensity * 26;
+
+  ctx.fillStyle = `hsl(${(trip.hueShift + 30) % 360} 100% 60%)`;
   ctx.beginPath();
   ctx.ellipse(0, 0, radius + 6, radius, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#fff4d3";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 80) % 360} 100% 84%)`;
   ctx.beginPath();
   ctx.ellipse(-4, 5, radius * 0.55, radius * 0.45, -0.2, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#f08a24";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 180) % 360} 100% 58%)`;
   ctx.beginPath();
   ctx.moveTo(radius - 2, 2);
   ctx.lineTo(radius + 16, -2);
@@ -310,16 +379,41 @@ function drawBird() {
   ctx.arc(6, -7, 7, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#183642";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 260) % 360} 100% 20%)`;
   ctx.beginPath();
   ctx.arc(8, -7, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#d9822b";
+  ctx.fillStyle = `hsl(${(trip.hueShift + 330) % 360} 90% 52%)`;
   ctx.beginPath();
   ctx.ellipse(-2, 2, 10, 6, -0.4, 0, Math.PI * 2);
   ctx.fill();
 
+  ctx.restore();
+}
+
+function drawHallucinations(trip) {
+  if (trip.intensity <= 0.01) {
+    return;
+  }
+
+  const orbCount = 4 + Math.floor(gameState.score / 2);
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  for (let index = 0; index < orbCount; index += 1) {
+    const angle = trip.time * (0.8 + index * 0.09) + index * 1.7;
+    const orbit = 60 + index * 26 + trip.intensity * 90;
+    const x = GAME_WIDTH / 2 + Math.cos(angle) * orbit;
+    const y = GAME_HEIGHT / 2 + Math.sin(angle * 1.4) * orbit * 0.65;
+    const radius = 14 + trip.intensity * 24 + (index % 3) * 8;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, `hsla(${(trip.hueShift + index * 45) % 360} 100% 70% / 0.38)`);
+    gradient.addColorStop(1, "transparent");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
