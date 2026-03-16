@@ -214,11 +214,13 @@ function getTripState() {
   const pulse = gameState.tripPulse;
   const intensity = Math.min(MAX_TRIP_INTENSITY, gameState.tripIntensity + pulse * 0.4);
   const mutation = Math.min(1, gameState.score / 10);
+  const mutationStage = Math.min(4, Math.floor(gameState.score / 3));
   return {
     time,
     pulse,
     intensity,
     mutation,
+    mutationStage,
     hueShift: (gameState.score * 34 + time * 120) % 360,
     wobble: intensity * 10 + pulse * 14,
     tunnel: intensity * 24 + pulse * 36,
@@ -386,6 +388,7 @@ function drawGround(target, trip) {
 function drawBird(target, trip) {
   const { x, y, radius, rotation } = gameState.bird;
   const morph = trip.mutation;
+  const stage = trip.mutationStage;
   const bodyStretchX = 1 + Math.sin(trip.time * 5.5) * morph * 0.34 + trip.pulse * 0.18;
   const bodyStretchY = 1 + Math.cos(trip.time * 4.6) * morph * 0.24 - trip.pulse * 0.06;
   const eyeOffsetX = 6 + Math.sin(trip.time * 7.2) * morph * 10;
@@ -404,6 +407,10 @@ function drawBird(target, trip) {
 
   if (morph > 0.08) {
     drawBirdEchoes(target, trip, radius, morph);
+  }
+
+  if (stage >= 2) {
+    drawBirdAura(target, trip, radius, morph, stage);
   }
 
   target.fillStyle = `hsl(${(trip.hueShift + 30) % 360} 100% 60%)`;
@@ -440,10 +447,22 @@ function drawBird(target, trip) {
   );
   target.fill();
 
+  if (stage >= 1) {
+    drawBirdSecondaryEye(target, trip, morph, eyeOffsetX, eyeOffsetY);
+  }
+
   target.fillStyle = `hsl(${(trip.hueShift + 330) % 360} 90% 52%)`;
   target.beginPath();
   target.ellipse(-2 - morph * 3, 2 + morph * 2, cheekRadiusX, cheekRadiusY, -0.4 + Math.sin(trip.time * 5.2) * morph * 0.6, 0, Math.PI * 2);
   target.fill();
+
+  if (stage >= 3) {
+    drawBirdTendrils(target, trip, radius, morph);
+  }
+
+  if (stage >= 4) {
+    drawBirdHalo(target, trip, radius, morph);
+  }
 
   if (morph > 0.22) {
     drawBirdCrest(target, trip, radius, morph);
@@ -482,6 +501,87 @@ function drawBirdCrest(target, trip, radius, morph) {
     target.beginPath();
     target.moveTo(-4, -8);
     target.quadraticCurveTo(tipX * 0.45, tipY * 0.45, tipX, tipY);
+    target.stroke();
+  }
+  target.restore();
+}
+
+function drawBirdSecondaryEye(target, trip, morph, eyeOffsetX, eyeOffsetY) {
+  const secondEyeX = eyeOffsetX - 12 - morph * 8 + Math.sin(trip.time * 6.6) * 4;
+  const secondEyeY = eyeOffsetY + 8 + Math.cos(trip.time * 7.8) * 4;
+  target.fillStyle = "rgba(255,255,255,0.9)";
+  target.beginPath();
+  target.arc(secondEyeX, secondEyeY, 4 + morph * 2.4, 0, Math.PI * 2);
+  target.fill();
+
+  target.fillStyle = `hsl(${(trip.hueShift + 220) % 360} 100% 18%)`;
+  target.beginPath();
+  target.arc(secondEyeX + 1, secondEyeY, 1.8 + morph, 0, Math.PI * 2);
+  target.fill();
+}
+
+function drawBirdAura(target, trip, radius, morph, stage) {
+  const ringCount = 1 + stage;
+  target.save();
+  target.globalCompositeOperation = "screen";
+  for (let ring = 0; ring < ringCount; ring += 1) {
+    const ringRadius = radius + 10 + ring * 8 + morph * 12;
+    target.strokeStyle = `hsla(${(trip.hueShift + 40 + ring * 34) % 360} 100% 70% / ${0.16 + ring * 0.05})`;
+    target.lineWidth = 1.5 + morph * 2;
+    target.beginPath();
+    target.ellipse(
+      Math.sin(trip.time * 3 + ring) * morph * 5,
+      Math.cos(trip.time * 2.4 + ring) * morph * 4,
+      ringRadius,
+      ringRadius * (0.6 + Math.sin(trip.time * 4 + ring) * 0.08),
+      trip.time * 0.6 + ring,
+      0,
+      Math.PI * 2
+    );
+    target.stroke();
+  }
+  target.restore();
+}
+
+function drawBirdTendrils(target, trip, radius, morph) {
+  const tendrilCount = 3 + Math.floor(morph * 3);
+  target.save();
+  target.globalCompositeOperation = "screen";
+  for (let index = 0; index < tendrilCount; index += 1) {
+    const startX = -radius * 0.3 + index * 4;
+    const startY = radius * 0.4;
+    const curl = Math.sin(trip.time * 4.8 + index) * (10 + morph * 12);
+    const length = radius + 18 + index * 5;
+    target.strokeStyle = `hsla(${(trip.hueShift + 300 + index * 25) % 360} 100% 68% / ${0.34 + morph * 0.16})`;
+    target.lineWidth = 1.5 + morph * 2;
+    target.beginPath();
+    target.moveTo(startX, startY);
+    target.bezierCurveTo(
+      startX - 10,
+      startY + length * 0.3,
+      startX + curl,
+      startY + length * 0.7,
+      startX + curl * 0.6,
+      startY + length
+    );
+    target.stroke();
+  }
+  target.restore();
+}
+
+function drawBirdHalo(target, trip, radius, morph) {
+  target.save();
+  target.globalCompositeOperation = "screen";
+  const spikes = 10;
+  for (let index = 0; index < spikes; index += 1) {
+    const angle = (Math.PI * 2 * index) / spikes + trip.time * 0.8;
+    const inner = radius + 18 + morph * 8;
+    const outer = inner + 16 + Math.sin(trip.time * 7 + index) * 10;
+    target.strokeStyle = `hsla(${(trip.hueShift + 120 + index * 18) % 360} 100% 72% / 0.42)`;
+    target.lineWidth = 2;
+    target.beginPath();
+    target.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+    target.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
     target.stroke();
   }
   target.restore();
