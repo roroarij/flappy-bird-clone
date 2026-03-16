@@ -4,6 +4,8 @@ const scoreNode = document.getElementById("score");
 const bestScoreNode = document.getElementById("best-score");
 const overlayNode = document.getElementById("overlay");
 const startButton = document.getElementById("start-button");
+const sceneCanvas = document.createElement("canvas");
+const sceneCtx = sceneCanvas.getContext("2d");
 
 const GAME_WIDTH = canvas.width;
 const GAME_HEIGHT = canvas.height;
@@ -20,6 +22,9 @@ const CLOUD_SPEED = 0.24;
 const BIRD_X = 112;
 const STORAGE_KEY = "flappy-best-score";
 const MAX_TRIP_INTENSITY = 1;
+
+sceneCanvas.width = GAME_WIDTH;
+sceneCanvas.height = GAME_HEIGHT;
 
 const gameState = {
   phase: "ready",
@@ -200,16 +205,8 @@ function isCollision() {
 
 function draw() {
   const trip = getTripState();
-
-  ctx.save();
-  applyTripTransform(trip);
-  drawSky(trip);
-  drawClouds(trip);
-  drawPipes(trip);
-  drawGround(trip);
-  drawBird(trip);
-  drawHallucinations(trip);
-  ctx.restore();
+  renderScene(sceneCtx, trip);
+  renderTripComposite(trip);
 }
 
 function getTripState() {
@@ -221,46 +218,82 @@ function getTripState() {
     pulse,
     intensity,
     hueShift: (gameState.score * 34 + time * 120) % 360,
-    wobble: intensity * 14 + pulse * 20
+    wobble: intensity * 10 + pulse * 14,
+    tunnel: intensity * 24 + pulse * 36,
+    kaleidoscopeSides: 3 + Math.floor(intensity * 6)
   };
 }
 
-function applyTripTransform(trip) {
-  const waveX = Math.sin(trip.time * 2.1) * trip.wobble;
-  const waveY = Math.cos(trip.time * 1.4) * (trip.intensity * 9 + trip.pulse * 12);
-  ctx.translate(GAME_WIDTH / 2 + waveX, GAME_HEIGHT / 2 + waveY);
-  ctx.rotate(Math.sin(trip.time * 1.2) * trip.intensity * 0.08);
-  ctx.scale(1 + trip.intensity * 0.06, 1 + trip.intensity * 0.04);
-  ctx.translate(-GAME_WIDTH / 2, -GAME_HEIGHT / 2);
-  ctx.filter = `hue-rotate(${trip.hueShift}deg) saturate(${1.1 + trip.intensity * 2.4}) contrast(${1.02 + trip.intensity * 0.28}) brightness(${1 + trip.pulse * 0.22})`;
+function renderScene(target, trip) {
+  target.save();
+  target.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  applyTripTransform(target, trip);
+  drawSky(target, trip);
+  drawClouds(target, trip);
+  drawPipes(target, trip);
+  drawGround(target, trip);
+  drawBird(target, trip);
+  drawHallucinations(target, trip);
+  target.restore();
 }
 
-function drawSky(trip) {
-  const skyGradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+function renderTripComposite(trip) {
+  ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+  if (trip.intensity < 0.12) {
+    ctx.drawImage(sceneCanvas, 0, 0);
+    return;
+  }
+
+  drawTrails(trip);
+  drawMirageSlices(trip);
+
+  ctx.save();
+  ctx.globalAlpha = 0.94;
+  ctx.drawImage(sceneCanvas, 0, 0);
+  ctx.restore();
+
+  drawTunnel(trip);
+  drawKaleidoscopeBloom(trip);
+}
+
+function applyTripTransform(target, trip) {
+  const waveX = Math.sin(trip.time * 1.8) * trip.wobble;
+  const waveY = Math.cos(trip.time * 1.1) * (trip.intensity * 7 + trip.pulse * 9);
+  target.translate(GAME_WIDTH / 2 + waveX, GAME_HEIGHT / 2 + waveY);
+  target.rotate(Math.sin(trip.time * 0.9) * trip.intensity * 0.04);
+  target.scale(1 + trip.intensity * 0.03, 1 + trip.intensity * 0.025);
+  target.translate(-GAME_WIDTH / 2, -GAME_HEIGHT / 2);
+  target.filter = `hue-rotate(${trip.hueShift}deg) saturate(${1.1 + trip.intensity * 2.6}) contrast(${1.02 + trip.intensity * 0.32}) brightness(${1 + trip.pulse * 0.24})`;
+}
+
+function drawSky(target, trip) {
+  const skyGradient = target.createLinearGradient(0, 0, 0, GAME_HEIGHT);
   skyGradient.addColorStop(0, `hsl(${(trip.hueShift + 210) % 360} 95% 72%)`);
   skyGradient.addColorStop(0.55, `hsl(${(trip.hueShift + 320) % 360} 100% 78%)`);
   skyGradient.addColorStop(1, `hsl(${(trip.hueShift + 90) % 360} 96% 72%)`);
-  ctx.fillStyle = skyGradient;
-  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  target.fillStyle = skyGradient;
+  target.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  ctx.fillStyle = `hsla(${(trip.hueShift + 40) % 360} 100% 78% / 0.95)`;
-  ctx.beginPath();
-  ctx.arc(
+  target.fillStyle = `hsla(${(trip.hueShift + 40) % 360} 100% 78% / 0.95)`;
+  target.beginPath();
+  target.arc(
     GAME_WIDTH - 72 + Math.sin(trip.time * 2.6) * trip.wobble,
     84 + Math.cos(trip.time * 2.2) * trip.wobble,
     30 + trip.intensity * 10,
     0,
     Math.PI * 2
   );
-  ctx.fill();
+  target.fill();
 }
 
-function drawClouds(trip) {
+function drawClouds(target, trip) {
   for (const cloud of gameState.clouds) {
-    ctx.fillStyle = `hsla(${(trip.hueShift + cloud.x) % 360} 100% 88% / 0.78)`;
+    target.fillStyle = `hsla(${(trip.hueShift + cloud.x) % 360} 100% 88% / 0.78)`;
     const driftY = Math.sin(trip.time * 3 + cloud.x / 50) * trip.wobble * 0.45;
     const widthWarp = 1 + Math.sin(trip.time * 2.5 + cloud.y / 40) * trip.intensity * 0.22;
     roundedRect(
+      target,
       cloud.x,
       cloud.y + driftY,
       cloud.width * widthWarp,
@@ -268,6 +301,7 @@ function drawClouds(trip) {
       cloud.height / 2
     );
     roundedRect(
+      target,
       cloud.x + cloud.width * 0.2,
       cloud.y - cloud.height * 0.45 + driftY,
       cloud.width * 0.45,
@@ -275,6 +309,7 @@ function drawClouds(trip) {
       cloud.height / 2
     );
     roundedRect(
+      target,
       cloud.x + cloud.width * 0.5,
       cloud.y - cloud.height * 0.25 + driftY,
       cloud.width * 0.36,
@@ -284,11 +319,12 @@ function drawClouds(trip) {
   }
 }
 
-function drawPipes(trip) {
+function drawPipes(target, trip) {
   for (const pipe of gameState.pipes) {
-    const warp = Math.sin(trip.time * 4 + pipe.x / 60) * trip.wobble;
-    drawPipe(pipe.x + warp, 0, pipe.gapTop, true, trip, pipe.x);
+    const warp = Math.sin(trip.time * 2.8 + pipe.x / 60) * trip.wobble * 0.6;
+    drawPipe(target, pipe.x + warp, 0, pipe.gapTop, true, trip, pipe.x);
     drawPipe(
+      target,
       pipe.x - warp,
       pipe.gapTop + PIPE_GAP,
       GAME_HEIGHT - GROUND_HEIGHT - (pipe.gapTop + PIPE_GAP),
@@ -299,133 +335,228 @@ function drawPipes(trip) {
   }
 }
 
-function drawPipe(x, y, height, upsideDown, trip, seed) {
-  ctx.save();
+function drawPipe(target, x, y, height, upsideDown, trip, seed) {
+  target.save();
   if (upsideDown) {
-    ctx.translate(0, y + height);
-    ctx.scale(1, -1);
+    target.translate(0, y + height);
+    target.scale(1, -1);
     y = 0;
   }
 
-  const pipeGradient = ctx.createLinearGradient(x, 0, x + PIPE_WIDTH, 0);
+  const pipeGradient = target.createLinearGradient(x, 0, x + PIPE_WIDTH, 0);
   pipeGradient.addColorStop(0, `hsl(${(trip.hueShift + seed / 2) % 360} 80% 38%)`);
   pipeGradient.addColorStop(0.5, `hsl(${(trip.hueShift + 100 + seed / 3) % 360} 95% 62%)`);
   pipeGradient.addColorStop(1, `hsl(${(trip.hueShift + 220 + seed / 2) % 360} 80% 38%)`);
 
-  ctx.fillStyle = pipeGradient;
-  ctx.fillRect(x, y, PIPE_WIDTH, height);
+  target.fillStyle = pipeGradient;
+  target.fillRect(x, y, PIPE_WIDTH, height);
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 160) % 360} 88% 22%)`;
-  ctx.fillRect(x, y, 8, height);
-  ctx.fillRect(x + PIPE_WIDTH - 8, y, 8, height);
+  target.fillStyle = `hsl(${(trip.hueShift + 160) % 360} 88% 22%)`;
+  target.fillRect(x, y, 8, height);
+  target.fillRect(x + PIPE_WIDTH - 8, y, 8, height);
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 70) % 360} 100% 64%)`;
-  ctx.fillRect(x - 6, y + 24, PIPE_WIDTH + 12, 24);
-  ctx.fillStyle = `hsl(${(trip.hueShift + 300) % 360} 85% 42%)`;
-  ctx.fillRect(x - 6, y + 40, PIPE_WIDTH + 12, 8);
+  target.fillStyle = `hsl(${(trip.hueShift + 70) % 360} 100% 64%)`;
+  target.fillRect(x - 6, y + 24, PIPE_WIDTH + 12, 24);
+  target.fillStyle = `hsl(${(trip.hueShift + 300) % 360} 85% 42%)`;
+  target.fillRect(x - 6, y + 40, PIPE_WIDTH + 12, 8);
 
-  ctx.restore();
+  target.restore();
 }
 
-function drawGround(trip) {
-  ctx.fillStyle = `hsl(${(trip.hueShift + 20) % 360} 85% 58%)`;
-  ctx.fillRect(0, GAME_HEIGHT - GROUND_HEIGHT, GAME_WIDTH, GROUND_HEIGHT);
+function drawGround(target, trip) {
+  target.fillStyle = `hsl(${(trip.hueShift + 20) % 360} 85% 58%)`;
+  target.fillRect(0, GAME_HEIGHT - GROUND_HEIGHT, GAME_WIDTH, GROUND_HEIGHT);
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 140) % 360} 95% 58%)`;
-  ctx.fillRect(0, GAME_HEIGHT - GROUND_HEIGHT, GAME_WIDTH, 18);
+  target.fillStyle = `hsl(${(trip.hueShift + 140) % 360} 95% 58%)`;
+  target.fillRect(0, GAME_HEIGHT - GROUND_HEIGHT, GAME_WIDTH, 18);
 
-  ctx.strokeStyle = `hsla(${(trip.hueShift + 260) % 360} 90% 30% / 0.45)`;
-  ctx.lineWidth = 4;
+  target.strokeStyle = `hsla(${(trip.hueShift + 260) % 360} 90% 30% / 0.45)`;
+  target.lineWidth = 4;
   for (let x = 0; x < GAME_WIDTH + 24; x += 26) {
-    ctx.beginPath();
+    target.beginPath();
     const groove = Math.sin(trip.time * 6 + x / 18) * trip.wobble * 0.35;
-    ctx.moveTo(x, GAME_HEIGHT - 34 + groove);
-    ctx.lineTo(x + 18, GAME_HEIGHT - 20 - groove);
-    ctx.stroke();
+    target.moveTo(x, GAME_HEIGHT - 34 + groove);
+    target.lineTo(x + 18, GAME_HEIGHT - 20 - groove);
+    target.stroke();
   }
 }
 
-function drawBird(trip) {
+function drawBird(target, trip) {
   const { x, y, radius, rotation } = gameState.bird;
 
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rotation + Math.sin(trip.time * 8) * trip.intensity * 0.18);
-  ctx.scale(1 + trip.pulse * 0.18, 1 - trip.pulse * 0.08);
+  target.save();
+  target.translate(x, y);
+  target.rotate(rotation + Math.sin(trip.time * 8) * trip.intensity * 0.18);
+  target.scale(1 + trip.pulse * 0.18, 1 - trip.pulse * 0.08);
 
-  ctx.shadowColor = `hsla(${(trip.hueShift + 300) % 360} 100% 68% / 0.8)`;
-  ctx.shadowBlur = 12 + trip.intensity * 26;
+  target.shadowColor = `hsla(${(trip.hueShift + 300) % 360} 100% 68% / 0.8)`;
+  target.shadowBlur = 12 + trip.intensity * 26;
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 30) % 360} 100% 60%)`;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, radius + 6, radius, 0, 0, Math.PI * 2);
-  ctx.fill();
+  target.fillStyle = `hsl(${(trip.hueShift + 30) % 360} 100% 60%)`;
+  target.beginPath();
+  target.ellipse(0, 0, radius + 6, radius, 0, 0, Math.PI * 2);
+  target.fill();
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 80) % 360} 100% 84%)`;
-  ctx.beginPath();
-  ctx.ellipse(-4, 5, radius * 0.55, radius * 0.45, -0.2, 0, Math.PI * 2);
-  ctx.fill();
+  target.fillStyle = `hsl(${(trip.hueShift + 80) % 360} 100% 84%)`;
+  target.beginPath();
+  target.ellipse(-4, 5, radius * 0.55, radius * 0.45, -0.2, 0, Math.PI * 2);
+  target.fill();
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 180) % 360} 100% 58%)`;
-  ctx.beginPath();
-  ctx.moveTo(radius - 2, 2);
-  ctx.lineTo(radius + 16, -2);
-  ctx.lineTo(radius - 2, -8);
-  ctx.closePath();
-  ctx.fill();
+  target.fillStyle = `hsl(${(trip.hueShift + 180) % 360} 100% 58%)`;
+  target.beginPath();
+  target.moveTo(radius - 2, 2);
+  target.lineTo(radius + 16, -2);
+  target.lineTo(radius - 2, -8);
+  target.closePath();
+  target.fill();
 
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.arc(6, -7, 7, 0, Math.PI * 2);
-  ctx.fill();
+  target.fillStyle = "#ffffff";
+  target.beginPath();
+  target.arc(6, -7, 7, 0, Math.PI * 2);
+  target.fill();
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 260) % 360} 100% 20%)`;
-  ctx.beginPath();
-  ctx.arc(8, -7, 3, 0, Math.PI * 2);
-  ctx.fill();
+  target.fillStyle = `hsl(${(trip.hueShift + 260) % 360} 100% 20%)`;
+  target.beginPath();
+  target.arc(8, -7, 3, 0, Math.PI * 2);
+  target.fill();
 
-  ctx.fillStyle = `hsl(${(trip.hueShift + 330) % 360} 90% 52%)`;
-  ctx.beginPath();
-  ctx.ellipse(-2, 2, 10, 6, -0.4, 0, Math.PI * 2);
-  ctx.fill();
+  target.fillStyle = `hsl(${(trip.hueShift + 330) % 360} 90% 52%)`;
+  target.beginPath();
+  target.ellipse(-2, 2, 10, 6, -0.4, 0, Math.PI * 2);
+  target.fill();
 
-  ctx.restore();
+  target.restore();
 }
 
-function drawHallucinations(trip) {
+function drawHallucinations(target, trip) {
   if (trip.intensity <= 0.01) {
     return;
   }
 
   const orbCount = 4 + Math.floor(gameState.score / 2);
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
+  target.save();
+  target.globalCompositeOperation = "screen";
   for (let index = 0; index < orbCount; index += 1) {
     const angle = trip.time * (0.8 + index * 0.09) + index * 1.7;
     const orbit = 60 + index * 26 + trip.intensity * 90;
     const x = GAME_WIDTH / 2 + Math.cos(angle) * orbit;
     const y = GAME_HEIGHT / 2 + Math.sin(angle * 1.4) * orbit * 0.65;
     const radius = 14 + trip.intensity * 24 + (index % 3) * 8;
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    const gradient = target.createRadialGradient(x, y, 0, x, y, radius);
     gradient.addColorStop(0, `hsla(${(trip.hueShift + index * 45) % 360} 100% 70% / 0.38)`);
     gradient.addColorStop(1, "transparent");
-    ctx.fillStyle = gradient;
+    target.fillStyle = gradient;
+    target.beginPath();
+    target.arc(x, y, radius, 0, Math.PI * 2);
+    target.fill();
+  }
+  target.restore();
+}
+
+function drawTrails(trip) {
+  const layers = 2 + Math.floor(trip.intensity * 5);
+  for (let index = 0; index < layers; index += 1) {
+    const spread = (index + 1) * (2 + trip.intensity * 10);
+    ctx.save();
+    ctx.globalAlpha = 0.07 + trip.intensity * 0.08;
+    ctx.filter = `blur(${2 + index * 2}px) hue-rotate(${trip.hueShift + index * 36}deg) saturate(${1.5 + trip.intensity * 2.2})`;
+    ctx.drawImage(sceneCanvas, -spread, 0);
+    ctx.drawImage(sceneCanvas, spread, 0);
+    ctx.drawImage(sceneCanvas, 0, spread * 0.45);
+    ctx.restore();
+  }
+}
+
+function drawMirageSlices(trip) {
+  if (trip.intensity < 0.22) {
+    return;
+  }
+
+  const bands = 5 + Math.floor(trip.intensity * 12);
+  const sliceHeight = GAME_HEIGHT / bands;
+  for (let index = 0; index < bands; index += 1) {
+    const offset = Math.sin(trip.time * 3.2 + index * 0.8) * (trip.tunnel * 0.6);
+    ctx.save();
+    ctx.globalAlpha = 0.12 + trip.intensity * 0.08;
+    ctx.drawImage(
+      sceneCanvas,
+      0,
+      index * sliceHeight,
+      GAME_WIDTH,
+      sliceHeight,
+      offset,
+      index * sliceHeight,
+      GAME_WIDTH,
+      sliceHeight
+    );
+    ctx.restore();
+  }
+}
+
+function drawTunnel(trip) {
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  for (let ring = 0; ring < 8; ring += 1) {
+    const progress = ring / 8;
+    const radius = 80 + progress * (120 + trip.tunnel * 3);
+    const wobble = Math.sin(trip.time * 2.5 + ring) * trip.tunnel;
+    ctx.strokeStyle = `hsla(${(trip.hueShift + ring * 32) % 360} 100% 65% / ${0.08 + progress * 0.1})`;
+    ctx.lineWidth = 2 + trip.intensity * 6 * (1 - progress);
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.ellipse(
+      GAME_WIDTH / 2 + Math.cos(trip.time * 1.4 + ring) * wobble * 0.2,
+      GAME_HEIGHT / 2 + Math.sin(trip.time * 1.1 + ring) * wobble * 0.14,
+      radius,
+      radius * (0.45 + Math.sin(trip.time + ring) * 0.08),
+      trip.time * 0.4 + ring,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
   }
   ctx.restore();
 }
 
-function roundedRect(x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + width, y, x + width, y + height, radius);
-  ctx.arcTo(x + width, y + height, x, y + height, radius);
-  ctx.arcTo(x, y + height, x, y, radius);
-  ctx.arcTo(x, y, x + width, y, radius);
-  ctx.closePath();
-  ctx.fill();
+function drawKaleidoscopeBloom(trip) {
+  if (trip.intensity < 0.35) {
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.08 + trip.intensity * 0.12;
+
+  for (let side = 0; side < trip.kaleidoscopeSides; side += 1) {
+    ctx.save();
+    ctx.rotate((Math.PI * 2 * side) / trip.kaleidoscopeSides + trip.time * 0.12);
+    ctx.scale(1, 0.72 + trip.intensity * 0.18);
+    ctx.drawImage(
+      sceneCanvas,
+      GAME_WIDTH * 0.2,
+      GAME_HEIGHT * 0.15,
+      GAME_WIDTH * 0.6,
+      GAME_HEIGHT * 0.7,
+      -GAME_WIDTH * 0.16,
+      -GAME_HEIGHT * 0.22,
+      GAME_WIDTH * 0.32,
+      GAME_HEIGHT * 0.44
+    );
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function roundedRect(target, x, y, width, height, radius) {
+  target.beginPath();
+  target.moveTo(x + radius, y);
+  target.arcTo(x + width, y, x + width, y + height, radius);
+  target.arcTo(x + width, y + height, x, y + height, radius);
+  target.arcTo(x, y + height, x, y, radius);
+  target.arcTo(x, y, x + width, y, radius);
+  target.closePath();
+  target.fill();
 }
 
 function frame(timestamp) {
